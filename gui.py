@@ -108,6 +108,152 @@ def open_integlvl_window(pid):
         rbs[-1].pack(anchor=W)
 
 
+def fill_frame_processes(frm_processes):
+    sht_processes = tksheet.Sheet(frm_processes,
+                                  headers=["PID", "Name", "Description", "Exe path", "Parent id",
+                                           "Parent name", "Owner name", "Owner SID", "Arch type",
+                                           "DEP", "ASLR"])
+    sht_processes.pack(expand=True, fill='both')
+    sht_processes.enable_bindings(("single_select",
+                                   "row_select",
+                                   "column_select",
+                                   "column_width_resize",
+                                   "arrowkeys",
+                                   "right_click_popup_menu",
+                                   "rc_select",
+                                   "copy",
+                                   ))
+
+    # Fill processes sheet
+    procs_info = gui_back.get_processes_info()
+    keys = list(procs_info[0].keys())
+    sht_processes.set_sheet_data([[proc_info[key] for key in keys] for proc_info in procs_info])
+
+    # sht_processes.set_sheet_data([[f"{ri * cj}" for cj in range(50)] for ri in range(50)])
+
+    # Right click dll
+    def right_click_dll():
+        selected = sht_processes.get_currently_selected()
+        row_data = sht_processes.get_row_data(selected.row)
+        pid = row_data[0]
+        open_ddls_window(int(pid))
+        # print(row_data)
+
+    # Right click environment
+    def right_click_env():
+        selected = sht_processes.get_currently_selected()
+        row_data = sht_processes.get_row_data(selected.row)
+        pid = row_data[0]
+        open_env_window(pid)
+        # print(row_data)
+
+    # Right click integrity level
+    def right_click_integ_lvl():
+        selected = sht_processes.get_currently_selected()
+        row_data = sht_processes.get_row_data(selected.row)
+        pid = row_data[0]
+        open_integlvl_window(pid)
+        # print(row_data)
+
+    # Add commands in right click popup menu
+    sht_processes.popup_menu_add_command(label="Dlls",
+                                         func=right_click_dll,
+                                         header_menu=False)
+
+    sht_processes.popup_menu_add_command(label="Environment",
+                                         func=right_click_env,
+                                         header_menu=False)
+
+    sht_processes.popup_menu_add_command(label="Integrity level",
+                                         func=right_click_integ_lvl,
+                                         header_menu=False)
+
+
+def fill_frame_file(frm_file):
+    lbl_choose_file = ttk.Label(frm_file, text="Choose file ")
+    lbl_choose_file.pack(side=TOP, pady=10)
+
+    filepath = None
+
+    # open subject acl window
+    def open_subject_acl_wndw(subject):
+        wndw_acl_subj = Toplevel()
+        wndw_acl_subj.title("ACL")
+        wndw_acl_subj.geometry("500x500")
+        wndw_acl_subj.grab_set()
+
+        chkbtns = []
+
+        # what to do when checkbutton is clicked
+        def on_click(chkbtn_name):
+            # get state of 'Full' permission button
+            full_btn_state = chkbtns[0]['state'].get()
+            # if clicked button is not 'Full' button
+            if chkbtn_name != 'Full':
+                if full_btn_state == 1:
+                    # if full button checked and we remove some permission, uncheck 'Full' button
+                    chkbtns[0]['state'].set(0)
+            # if clicked button is 'Full' button
+            else:
+                # set all buttons to checked or unchecked state, depending on state of 'Full' button
+                for chkbtn in chkbtns:
+                    chkbtn['state'].set(full_btn_state)
+
+        def create_command(chkbtn_name):
+            return lambda: on_click(chkbtn_name)
+
+        # create checkbuttons
+        for chkbtn_name in subject['permissions'].keys():
+            chkbtn_state = IntVar()
+            chkbtn_state.set(subject['permissions'][chkbtn_name])
+            chkbtn = ttk.Checkbutton(wndw_acl_subj, text=chkbtn_name, variable=chkbtn_state,
+                                     command=create_command(chkbtn_name))
+            chkbtns.append({"chkbtn": chkbtn, "state": chkbtn_state})
+            chkbtn.pack(side=TOP, pady=5)
+
+        # actions when apply button is clicked
+        def apply_btn_on_click():
+            # save old_permissions
+            old_permissions = subject['permissions'].copy()
+            # set permissions according to checkbuttons states
+            for key, chkbtn in zip(subject['permissions'].keys(), chkbtns):
+                subject['permissions'][key] = chkbtn['state'].get()
+            # change acl
+            gui_back.change_subject_acl(filepath, subject, old_permissions)
+            # close window of subject acl
+            wndw_acl_subj.destroy()
+
+        # create apply button
+        apply_btn = ttk.Button(wndw_acl_subj, text='Apply', command=lambda: apply_btn_on_click())
+        apply_btn.pack(side=TOP, pady=10)
+
+    def open_file_acl_wndw():
+        # open file
+        nonlocal filepath
+        filepath = askopenfilename()
+        if filepath is not None:
+            # get acl
+            acl = gui_back.get_acl(filepath)
+            # create window
+            wndw_acl = Toplevel()
+            wndw_acl.title("ACL")
+            wndw_acl.geometry("500x500")
+            wndw_acl.grab_set()
+            lbl1_wndw_acl = ttk.Label(wndw_acl, text="File: " + os.path.abspath(filepath))
+            lbl1_wndw_acl.pack(side=TOP, pady=10)
+
+            def create_command(key):
+                return lambda: open_subject_acl_wndw({"id": key, "permissions": acl[key]})
+
+            # create buttons of subjects
+            btns_subjects = []
+            for key in acl.keys():
+                btns_subjects.append(ttk.Button(wndw_acl, text=key, command=create_command(key)))
+                btns_subjects[-1].pack(side=TOP, pady=10)
+
+    # create open file button
+    btn = ttk.Button(frm_file, text='Open file', command=lambda: open_file_acl_wndw())
+    btn.pack(side=TOP, pady=10)
 
 
 # start GUI
@@ -133,10 +279,10 @@ def start_interface():
     ntbk.add(frm_file, text='File')
 
     # Create process sheet at frm_processes
-
+    fill_frame_processes(frm_processes)
 
     # Fill file frame
-
+    fill_frame_file(frm_file)
 
     # Main loop
     wndw_root.mainloop()
